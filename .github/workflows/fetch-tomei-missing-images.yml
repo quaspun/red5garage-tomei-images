@@ -1,0 +1,43 @@
+name: Fetch TOMEI missing images
+
+on:
+  push:
+    paths:
+      - 'tomei-missing-image-urls.tsv'
+      - '.github/workflows/fetch-tomei-missing-images.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download TOMEI product images
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p images/web
+          while IFS=$'\t' read -r sku url; do
+            [ -n "$sku" ] || continue
+            echo "Downloading $sku"
+            curl --fail --location --retry 3 \
+              --user-agent 'Mozilla/5.0 (compatible; Red5GarageCatalog/1.0)' \
+              --referer 'https://www.tomeiusa.com/' \
+              "$url" -o "images/web/${sku}.jpg"
+            test -s "images/web/${sku}.jpg"
+          done < tomei-missing-image-urls.tsv
+      - name: Commit downloaded images
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add images/web
+          if git diff --cached --quiet; then
+            echo 'No image changes to commit.'
+          else
+            git commit -m 'Add missing TOMEI USA product images'
+            git push
+          fi
