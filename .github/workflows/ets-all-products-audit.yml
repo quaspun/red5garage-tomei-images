@@ -1,4 +1,4 @@
-name: ETS All Products Audit
+name: ETS Subaru Collection Audit
 
 on:
   push:
@@ -15,34 +15,57 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Fetch entire official ETS Shopify catalog
+      - name: Fetch official ETS Subaru chassis collections
         shell: bash
         run: |
           python - <<'PY'
           import json, os, urllib.request, time
           base='https://www.extremeturbosystems.com'
           headers={'User-Agent':'Mozilla/5.0 (compatible; Red5GarageETSAudit/1.0)','Accept':'application/json,text/plain,*/*'}
-          all_products=[]
-          for page in range(1,5):
-              url=f'{base}/products.json?limit=250&page={page}'
+          collections=[
+            'subaru',
+            '04-07-subaru-sti',
+            '04-07-sti-turbo-kits',
+            '08-14-subaru-sti',
+            '08-14-sti-turbo-kits',
+            '2015-2018-subaru-sti',
+            '15-19-sti-turbo-kits',
+            'subaru-22-wrx-performance-parts'
+          ]
+          os.makedirs('ets_subaru_audit',exist_ok=True)
+          combined={}
+          for handle in collections:
+              url=f'{base}/collections/{handle}/products.json?limit=250'
+              req=urllib.request.Request(url,headers=headers)
+              try:
+                  with urllib.request.urlopen(req,timeout=60) as resp:
+                      data=json.loads(resp.read().decode('utf-8'))
+                  products=data.get('products',[])
+                  combined[handle]=products
+                  print(handle,len(products),url)
+                  with open(f'ets_subaru_audit/{handle}.json','w',encoding='utf-8') as f:
+                      json.dump(data,f,indent=2,ensure_ascii=False)
+              except Exception as e:
+                  print('ERROR',handle,repr(e))
+              time.sleep(0.5)
+          # Direct product JS for the known 15+ STI single scroll kit, which is omitted from broad collection JSON.
+          direct_handle='ets-subaru-15-sti-single-scroll-turbo-kit'
+          url=f'{base}/products/{direct_handle}.js'
+          try:
               req=urllib.request.Request(url,headers=headers)
               with urllib.request.urlopen(req,timeout=60) as resp:
-                  data=json.loads(resp.read().decode('utf-8'))
-              products=data.get('products',[])
-              print('page',page,'count',len(products),url)
-              all_products.extend(products)
-              if len(products)<250:
-                  break
-              time.sleep(1)
-          os.makedirs('ets_all',exist_ok=True)
-          with open('ets_all/all_products.json','w',encoding='utf-8') as f:
-              json.dump({'products':all_products},f,indent=2,ensure_ascii=False)
-          print('total',len(all_products))
-          print('ets vendor',sum(1 for p in all_products if p.get('vendor')=='Extreme Turbo Systems'))
+                  direct=json.loads(resp.read().decode('utf-8'))
+              with open(f'ets_subaru_audit/{direct_handle}.json','w',encoding='utf-8') as f:
+                  json.dump(direct,f,indent=2,ensure_ascii=False)
+              print('direct',direct_handle,direct.get('title'),len(direct.get('variants',[])),len(direct.get('images',[])))
+          except Exception as e:
+              print('DIRECT ERROR',repr(e))
+          with open('ets_subaru_audit/combined.json','w',encoding='utf-8') as f:
+              json.dump(combined,f,indent=2,ensure_ascii=False)
           PY
-      - name: Upload full ETS catalog
+      - name: Upload Subaru audit data
         uses: actions/upload-artifact@v4
         with:
-          name: ets-all-products-json
-          path: ets_all/all_products.json
+          name: ets-subaru-collection-audit
+          path: ets_subaru_audit/*.json
           if-no-files-found: error
