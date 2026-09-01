@@ -1,0 +1,44 @@
+name: ETS Catalog Fetch
+
+on:
+  push:
+    paths:
+      - '.github/workflows/ets-catalog-fetch.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Fetch official ETS Shopify product data
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os, time, urllib.request
+          base='https://www.extremeturbosystems.com'
+          collections=['subaru','mitsubishi','toyota','nissan']
+          os.makedirs('ets_catalog',exist_ok=True)
+          combined={}
+          headers={'User-Agent':'Mozilla/5.0 (compatible; Red5GarageCatalogFetch/1.0)','Accept':'application/json,text/plain,*/*'}
+          for collection in collections:
+              url=f'{base}/collections/{collection}/products.json?limit=250'
+              req=urllib.request.Request(url,headers=headers)
+              with urllib.request.urlopen(req,timeout=60) as resp:
+                  data=json.loads(resp.read().decode('utf-8'))
+              combined[collection]=data.get('products',[])
+              with open(f'ets_catalog/{collection}.json','w',encoding='utf-8') as f: json.dump(data,f,indent=2,ensure_ascii=False)
+              print(collection,len(combined[collection]),url)
+              time.sleep(1)
+          with open('ets_catalog/combined.json','w',encoding='utf-8') as f: json.dump(combined,f,indent=2,ensure_ascii=False)
+          PY
+      - name: Upload ETS product JSON
+        uses: actions/upload-artifact@v4
+        with:
+          name: ets-product-json
+          path: ets_catalog/*.json
+          if-no-files-found: error
